@@ -1,0 +1,21 @@
+#!/bin/sh
+if [ $# -lt 1 ]; then
+	echo "Expected parameter: data files to sign, for example:"
+	echo "$0 file1.txt file2.txt"
+	exit -1
+fi
+
+doone()
+{
+	if [ -f "$1.gtts" ]; then
+		echo "File \"$1\" has already existing signature ($1.gtts)"
+	else
+		echo Signing $1:
+		gtime -s -f "$1" -o "$1.gtts" && echo "Signature token is stored as \"$1.gtts\""
+	fi
+}
+
+while [ "$1" != "" ]; do
+	doone "$1"
+	shift 1;
+done

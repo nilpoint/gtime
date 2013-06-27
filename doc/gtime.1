@@ -1,0 +1,322 @@
+.TH GTIME 1 LOCAL
+
+.SH NAME
+.B gtime
+\- Command-line access to Guardtime Keyless Signature services.
+
+.SH SYNOPSIS
+Create a signature:
+.br
+.B gtime -s
+[
+.I more options
+]
+
+Extend a signature (use online verification service to build a hash chain to a newspaper publication):
+.br
+.B gtime -x -i
+.I file.gtts
+[
+.I more options
+]
+
+Verify a signature as is:
+.br
+.B gtime -v
+[
+.B -i
+.I file.gtts
+|
+.B -s
+] [
+.I more options
+]
+
+Verify a signature using an online verification service:
+.br
+.B gtime -v -x -i
+.I file.gtts
+[
+.I more options
+]
+
+Download a publications file:
+.br
+.B gtime -p
+[
+.I more options
+]
+
+Authenticate a publications file:
+.br
+.B gtime -v
+[
+.B -b
+.I file
+|
+.B -p
+] [
+.I more options
+]
+
+.SH DESCRIPTION
+This is a general signing and signature verification tool for Guardtime Keyless Signature services.
+
+.SH OPTIONS
+.TP
+.B \-s
+Sign the data presented either as an input file (or stream) or a hash value.
+.TP
+.BI \-S\  url
+The signing service URL;
+.br
+http://stamper.guardtime.net/gt-signingservice is the default.
+.TP
+.B \-x
+Use the online verification (extending) service.
+.TP
+.BI \-X\  url
+The online verification (extending) service URL;
+.br
+http://verifier.guardtime.net/gt-extendingservice is the default.
+.TP
+.B \-p
+Download a fresh publications file (and use it for verification if applicable).
+.TP
+.BI \-P\  url
+The publications file URL;
+.br
+http://verify.guardtime.com/gt-controlpublications.bin is the default.
+.TP
+.B \-v
+Verify a signature
+.RB ( -i
+.IR file );
+verify online with
+.BR -x ;
+or verify the result of
+.BR -s ,
+.BR -p ,
+.B -b
+if present.
+.TP
+.B \-t
+Display service timings.
+.TP
+.B \-n
+Print signer name in
+.RB ' " : " '-separated
+hierarchical form, or numeric ID if name not available.
+.TP
+.B \-r
+Print list of publication references,
+i.e. list of newspaper and online sources where publication value could be verified.
+Use with extended / online verified signature
+.RB ( -x )
+or publications file
+.RB ( -p ).
+.TP
+.B \-l
+Print the "extended location ID" value (service diagnostic, not useful for general public).
+.TP
+.B \-d
+Dump detailed signature or publications file verification info.
+.TP
+.BI \-f\  file
+Data file to be signed or verified.
+.TP
+.BI \-H\  alg
+The algorithm for hashing the data file;
+SHA1, SHA224, SHA256, SHA384, SHA512, RIPEMD160 are supported;
+SHA256 is the default.
+.TP
+.BI \-F\  dh
+Data hash to be signed or verified;
+can be given as
+.IB alg : hash-in-hex
+or just
+.I hash-in-hex
+when the algorithm is specified separately
+.RB ( -H ).
+.TP
+.BI \-i\  file
+Input file to read the signature from.
+.TP
+.BI \-o\  file
+Output file to save the signature or publications data to.
+.TP
+.BI \-b\  file
+Input file to read the publications data from.
+.TP
+.BI \-V\  file
+Verify publications file signature verbosely against the OpenSSL-style truststore in
+.IR file ;
+this switches off default (and less verbose) verification.
+.TP
+.BI \-C\  int
+Network connect timeout, in seconds.
+.TP
+.BI \-c\  int
+Network transfer timeout, in seconds.
+.TP
+.B \-h
+Display a help screen and quit.
+.LP
+It is possible to use stdin or stdout for streaming data, give
+.RB ' - '
+as a filename argument for that.
+
+Verification result is presented as a list of succeeded or failed tests,
+printed to stdout or stderr respectively.
+In the case of any failed tests exit status from range 1-9 is returned;
+exit code above 9 does not imply that the signature token is invalid.
+
+.SH EXIT STATUS
+Exit status is
+.B 0
+if everything is OK, or an error code explained below
+(there are more details in the error message printed to stderr):
+.TP
+.B 1
+Verification error \- data hash does not match the hash value in the signature token.
+Document/data/hash is modified, or it is just wrong document.
+.TP
+.B 3
+Verification error \- could not establish trust using publications file.
+Signature token does not match with respective publication data,
+or untrusted key is used for the initial token authentication,
+or token is too old to verify as is (needs extending).
+.TP
+.B 4
+Verification error \- could not verify/parse publications file.
+.TP
+.B 5
+Error \- broken signature token (format problem).
+.TP
+.B 10
+Network error.
+.TP
+.B 12
+Network error \- access denied.
+.TP
+.B 13
+Network error \- authentication needed or wrong credentials given.
+.TP
+.B 14
+Input-output error \- file not found, file access denied, etc.
+.TP
+.B 15
+Out of memory error.
+.TP
+.B 16
+Internal error.
+.TP
+.B 20
+Invalid argument to a Guardtime API function.
+.TP
+.B 21
+Invalid command-line argument or malformed URL.
+
+.SH EXAMPLES
+.B gtime -s -f
+.I file
+.B -o
+.I file.gtts
+.br
+sign the data file
+.I file
+and save the resulting signature in the file
+.IR file.gtts ;
+if you have a private gateway, you can add
+.B -S
+.I url
+to the command line to use that instead of the default anonymous public service.
+
+.B gtime -x -i
+.I file.gtts
+.B -o
+.I file.gtts
+.br
+load the signature from
+.IR file.gtts ,
+extend it (build a hash chain linking the signature to a publication)
+and save the extended signature back to
+.IR file.gtts ;
+if you have a private gateway, add
+.B -X
+.I url
+to use that instead of the default public service.
+
+.B gtime -v -p -o
+.I pubs.bin
+.br
+download the publications data,
+verify it against the built-in truststore
+and save the verified data to
+.IR pubs.bin ;
+if you have a local publication data distribution point, add
+.B -P
+.I url
+to use that instead of the default.
+
+.B gtime -v -x -f
+.I file
+.B -i
+.I file.gtts
+.B -b
+.I pubs.bin
+.B -V
+.I /usr/share/doc/gtime/trust.pem
+.br
+load the signature from
+.I file.gtts 
+and extend it using the online verification service at the default URL;
+load the publications data from
+.I pubs.bin
+and verify it verbosely against the truststore in
+.IR trust.pem ;
+check that the extended signature is consistent with the publications data;
+verify the data in
+.I file
+against the signature.
+
+.SH ENVIRONMENT
+.TP
+.B TZ
+Sets the time zone for displayed dates and times; for example,
+.br
+.BI TZ= CEST
+.B gtime -v -i
+.I file.gtts
+.br
+gives all times according to Central European Summer Time
+(except the publishing time, which is always shown in UTC
+to be consistent with how the publications appear in newspapers).
+.TP
+.B http_proxy
+Sets the proxy server to use for HTTP; format is
+.BI [ protocol ://] host [: port ] .
+.TP
+.B NO_PROXY
+Gives comma-separated list of names of hosts that shouldn't go through the proxy; if set to an asterisk
+.RB ' * '
+only, matches all hosts.
+.LP
+Internet Explorer's proxy settings are automatically used on Windows.
+
+.SH SEE ALSO
+The
+.B gtime-sign
+.RB ( gtime-sign.bat
+on Windows)
+and
+.B gtime-verify
+.RB ( gtime-verify.bat
+on Windows)
+scripts are wrappers around
+.B gtime
+that provide limited functionality with simpler interface.
+Each of them displays usage information when executed with no command line parameters.
+
+.SH AUTHOR
+Guardtime AS, http://www.guardtime.com/

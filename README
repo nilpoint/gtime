@@ -1,0 +1,58 @@
+`gtime` is a command-line tool for using Guardtime 'keyless data signature' or KSI service.
+Suitable for shell scripting, automating (like signing and verifying logs and system files)
+and also works great when called from interpreted languages.
+
+
+Usage
+=====
+ * gtime - command-line signing and verification tool
+ * gtime-test - testing tool, adds some flexibility in parameters
+ * gtime-sign - simplified signer, wrapper around gtime
+ * gtime-verify - simplified verifier, wrapper around gtime
+
+There are man-pages in doc directory.
+
+
+Dependencies
+============
+ * OpenSSL (0.9.8 and up) development libraries
+ * libcurl
+ * libgt (Guardtime C SDK), available from http://download.guardtime.com/libgt-0.3.11-src.tgz
+
+
+Works on
+========
+ * Linux (CentOS, Debian, etc)
+ * NetBSD
+ * SmartOS, OpenSolaris
+ * Mac OS X
+ * Windows - see below
+
+Packaging scripts will come later.
+
+
+Compiling
+=========
+We use GNU automake/autoconf toolchain. Install dependencies and run usual
+./configure && make && make install.
+
+In order to bootstrap the raw source repository start with
+autoreconf -vi
+
+
+Windows
+=======
+Precompiled dependencies:
+ - http://download.guardtime.com/libeay-0.9.8g-bin-win32.zip
+ - http://download.guardtime.com/libgt-0.3.11-bin-win32.zip
+No need for libcurl.
+
+winmake.bat compiles the tool. In order to create helpfile in PDF format run
+man -t doc/gtime.1 | ps2pdf > doc/gtime.pdf 
+
+
+License
+=======
+Apache 2.0
+
+Copyright Guardtime AS 2013

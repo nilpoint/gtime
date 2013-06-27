@@ -1,0 +1,45 @@
+# Object files
+*.o
+*.obj
+
+# distfile
+*.tar.gz
+
+# packaging scripts
+packaging/
+
+# Executables
+*.exe
+*.out
+*.app
+gtime
+gtime-test
+
+# Generated file by autotools
+Makefile
+Makefile.in
+aclocal.m4
+ar-lib
+autom4te.cache/
+compile
+config.guess
+config.h
+config.h.in
+config.log
+config.status
+config.sub
+configure
+depcomp
+install-sh
+libtool
+ltmain.sh
+missing
+.deps/
+
+# Build
+*.la
+*.lo
+*.libs
+
+# docs
+doc/*.pdf

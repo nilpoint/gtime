@@ -1,0 +1,22 @@
+#!/bin/sh
+if [ $# -lt 1 ]; then
+	echo "Expected parameter: data files to verify, for example:"
+	echo "$0 file1.txt file2.txt"
+	echo "Note that signature token must be stored as file1.txt.gtts, file2.txt.gtts etc."
+	exit -1
+fi
+
+doone()
+{
+	if [ -f "$1.gtts" ]; then
+		echo Verifying $1:
+		gtime -v -x -p -i "$1.gtts" -f "$1" | sed -e '/^GT_/d'
+	else
+		echo "File \"$1\" is not signed; signature token \"$1.gtts\" cannot be found."
+	fi
+}
+
+while [ "$1" != "" ]; do
+	doone "$1"
+	shift 1;
+done
