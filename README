@@ -1,6 +1,7 @@
-`gtime` is a command-line tool for using Guardtime 'keyless data signature' or KSI service.
-Suitable for shell scripting, automating (like signing and verifying logs and system files)
-and also works great when called from interpreted languages.
+`gtime` is a command-line tool for using Guardtime 'keyless data signature'
+or KSI service. Suitable for shell scripting, automating (like signing and
+verifying logs and system files) and also works great when called from
+interpreted languages.
 
 
 Usage

@@ -35,6 +35,7 @@ libtool
 ltmain.sh
 missing
 .deps/
+stamp-h1
 
 # Build
 *.la
