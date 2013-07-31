@@ -1,0 +1,13 @@
+Package: gtime
+Version: @VER@
+Section: utils
+Priority: optional
+Architecture: @ARCH@ 
+Depends:  libcurl3, libssl1.0.0, libc6, libgtbase
+Maintainer: Guardtime <support@guardtime.com>
+Source: gtime (svn rev: @REV@)
+Description: Command-line access to Guardtime Keyless Signature service
+ Guardtime signing and verification tool. Execute
+ gtime -h
+ to view brief usage instructions, refer to man page for documentation.
+

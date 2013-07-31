@@ -6,14 +6,14 @@
 *.tar.gz
 
 # packaging scripts
-packaging/
+# packaging/
 
 # Executables
 *.exe
 *.out
 *.app
-gtime
-gtime-test
+# gtime   ## also name of dir
+# gtime-test
 
 # Generated file by autotools
 Makefile
