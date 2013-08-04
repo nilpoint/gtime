@@ -1,4 +1,4 @@
-AC_INIT([gtime], [1.0-12])
+AC_INIT([gtime], [1.0-13])
 AC_PREREQ([2.59])
 AM_INIT_AUTOMAKE([1.9 no-define foreign])
 AC_CONFIG_HEADERS([config.h])

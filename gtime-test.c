@@ -182,8 +182,45 @@ unsigned collectBits(const unsigned char *buf, int *len, int num) {
 	return res;
 }
 
+/* Checks if the hash step embeds a name tag in the sibling hash.
+ * If it does, skips the step in location id extraction. */
+void checkName(const GTHashEntry *step, int *len)
+{
+	const size_t hash_len = GT_getHashSize(GT_HASHALG_SHA224);
+	size_t i;
+	assert(len != NULL);
+	assert(*len >= 0);
+	if (*len <= 0) {
+		/* No hash step. */
+		return;
+	}
+	if (step->direction != 1) {
+		/* Sibling not on the right. */
+		return;
+	}
+	if (step->sibling_hash_algorithm != GT_HASHALG_SHA224) {
+		/* Sibling not SHA-224. */
+		return;
+	}
+	if (step->sibling_hash_value[0] != 0) {
+		/* First byte of sibling hash value not the tag value 0. */
+		return;
+	}
+	if ((size_t) step->sibling_hash_value[1] + 2 > hash_len) {
+		/* Second byte of sibling hash value not a valid name length. */
+		return;
+	}
+	for (i = 2 + step->sibling_hash_value[1]; i < hash_len; ++i) {
+		if (step->sibling_hash_value[i] != 0) {
+			/* Name not properly padded. */
+			return;
+		}
+	}
+	--*len;
+}
+
 int printLocationIdentifier(int location_count, GTHashEntry *location_list) {
-	
+	static const int hasher = 80;
 	static const int gdepth_top = 60;
 	static const int gdepth_national = 39;
 	static const int gdepth_state = 19;
@@ -228,26 +265,40 @@ int printLocationIdentifier(int location_count, GTHashEntry *location_list) {
 		hash_bit = 1 - location_list[i].direction; //inverse!
 		hash_level = location_list[i].level;
 		
-		if (i == location_count-1) {
-			bits[num_bits++] = hash_bit;
-			loc.hasher = 1 + collectBits(bits, &num_bits, 1);
+		if (hash_level > hasher && last_level <= hasher) {
+			if (hash_level == 0xff) {
+				/* old, 2007-2013 core architecture: exactly two hashers;
+				 * direction bit of last hashing step shows, which one */
+				loc.hasher = 1 + hash_bit;
+			} else {
+				/* new, 2013+ core architecture: any number of hashers;
+				* first sufficiently high level value shows, which one;
+				* remaining steps ignored in id extraction */
+				loc.hasher = hash_level - hasher;
+			}
 			loc.national_cluster = collectBits(bits, &num_bits, num_bits);
 			break;
 		}
 		if (hash_level > top_level && last_level <= top_level) {
 			loc.national_machine = collectBits(bits, &num_bits, ab_bits_top);
 			loc.national_slot = collectBits(bits, &num_bits, slot_bits_top);
+			checkName(&location_list[i], &num_bits); // skip the bit in name step
 			loc.state_cluster = collectBits(bits, &num_bits, num_bits);
 		}
 		if (hash_level > national_level && last_level <= national_level) {
 			loc.state_machine = collectBits(bits, &num_bits, ab_bits_national);
 			loc.state_slot = collectBits(bits, &num_bits, slot_bits_national);
+			checkName(&location_list[i], &num_bits); // skip the bit in name step
 			loc.local_cluster = collectBits(bits, &num_bits, num_bits);
 		}
 		if (hash_level > state_level && last_level <= state_level) {
 			loc.local_machine = collectBits(bits, &num_bits, ab_bits_state);
 			loc.local_slot = collectBits(bits, &num_bits, slot_bits_state);
+			checkName(&location_list[i], &num_bits); // skip the bit in name step
 			loc.client_id = collectBits(bits, &num_bits, num_bits);
+		}
+		if (hash_level > 1 && last_level <= 1) {
+			checkName(&location_list[i], &num_bits); // skip the bit in name step
 		}
 		
 		last_level = hash_level;
