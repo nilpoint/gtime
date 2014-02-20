@@ -1,5 +1,5 @@
 /*
- * $Id: gt_internal.h 74 2010-02-22 11:42:26Z ahto.truu $
+ * $Id: gt_internal.h 143 2013-12-20 15:04:06Z henri.lakk $
  *
  * Copyright 2008-2010 GuardTime AS
  *

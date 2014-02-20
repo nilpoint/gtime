@@ -168,8 +168,13 @@ Input file to read the publications data from.
 .TP
 .BI \-V\  file
 Verify publications file signature verbosely against the OpenSSL-style truststore in
-.IR file ;
-this switches off default (and less verbose) verification.
+.IR file .
+Clears default truststore. Not available on Windows where CryptoAPI root certificate store is used.
+.TP
+.BI \-W\  directory
+Verify publications file signature verbosely against the OpenSSL-style truststore in
+.IR directory .
+Clears default truststore. Not available on Windows where CryptoAPI root certificate store is used.
 .TP
 .BI \-C\  int
 Network connect timeout, in seconds.

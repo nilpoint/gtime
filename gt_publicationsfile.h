@@ -1,5 +1,5 @@
 /*
- * $Id: gt_publicationsfile.h 122 2011-12-07 23:05:31Z ahto.truu $
+ * $Id: gt_publicationsfile.h 159 2014-01-14 15:45:25Z ahto.truu $
  *
  * Copyright 2008-2010 GuardTime AS
  *
@@ -22,10 +22,6 @@
 #include <stddef.h>
 #include <time.h>
 
-#include <openssl/pkcs7.h>
-#include <openssl/x509.h>
-
-#include "gt_base.h"
 #include "gt_internal.h"
 
 #ifdef __cplusplus

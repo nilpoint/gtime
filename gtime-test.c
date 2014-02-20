@@ -12,13 +12,11 @@
  * permissions and limitations under the License.
  */
 
-// openssl is depreciated on a closing up platform.
-#define MAC_OS_X_VERSION_MIN_REQUIRED MAC_OS_X_VERSION_10_0
-
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
 #include <stdlib.h>
+#include <ctype.h>
 #ifndef WIN32
 #  include <unistd.h>
 #  define _setmode(a,b) 
@@ -51,12 +49,14 @@
 #  include <curl/curl.h>
 #endif
 
-// kludge to support both openssl 0.9.8 and 1.0
-DECLARE_STACK_OF(ASN1_OCTET_STRING)
 #define sk_ASN1_OCTET_STRING_num(st) SKM_sk_num(ASN1_OCTET_STRING, (st))
 #define sk_ASN1_OCTET_STRING_value(st, i) SKM_sk_value(ASN1_OCTET_STRING, (st), (i))
+#define sk_ASN1_OCTET_STRING_push(st, val) SKM_sk_push(ASN1_OCTET_STRING, (st), (val))
+#define sk_ASN1_OCTET_STRING_new_null() SKM_sk_new_null(ASN1_OCTET_STRING)
 
-#include "config.h"
+#ifdef HAVE_CONFIG_H
+#  include "config.h"
+#endif
 
 #define DEFAULT_S_URL "http://stamper.guardtime.net/gt-signingservice"
 #define DEFAULT_X_URL "http://verifier.guardtime.net/gt-extendingservice"
@@ -118,7 +118,7 @@ bool download_pubfile = false;
 bool print_id = false;
 bool print_name = false;
 int extending_request_age = 36;
-X509_STORE *truststore = NULL;
+extern X509_STORE *GT_truststore;  // we get defaults from C API; but access extern structure to reimplement 'debug' verification 
 bool test = 0;
 
 
@@ -128,33 +128,34 @@ static void usage(const char *argv0)
 			"GuardTime command-line %stool %s, using API %d.%d\n"
 			"Usage: %s <-s|-x|-p|-v> [more options]\n"
 			"Where recognized options are:\n"
-			" -s		create timesignature\n"
-			" -S <url>	specify signing service URL\n"
-			" -x		use online verifying (extending) service\n"
-			" -X <url>	specify verification (extending) service URL\n"
-			" -p		download publications file\n"
-			" -P <url>	specify publications file URL\n"
-			" -v		verify timesignature (-i <ts>); online verify with -x; or result of -s, -p if present\n"
-			" -t		include service timing\n"
-			" -n		print signer name (identity)\n"
-			" -r		print publication references (use with -vx)\n"			
-			" -l		print 'extended location ID' value\n"
+			" -s		Sign data\n"
+			" -S <url>	specify Signing Service URL\n"
+			" -x		use online verification (eXtending) service\n"
+			" -X <url>	specify verification (eXtending) service URL\n"
+			" -p		download Publications file\n"
+			" -P <url>	specify Publications file URL\n"
+			" -v		Verify signature token (-i <ts>); online verify with -x; or result of -s, -p if present\n"
+			" -t		include service Timing\n"
+			" -n		print signer Name (identity)\n"
+			" -r		print publication References (use with -vx)\n"			
+			" -l		print 'extended Location ID' value\n"
 			"%s"
-			" -d		dump detailed information\n"
-			" -f <fn>	file to be signed / verified\n"
-			" -H <ALG>	hash algorithm used to hash the file to be signed\n"
-			" -F <hash>	data hash to be signed / verified. Hash format: <ALG>:<hash in hex>\n"
-			" -i <fn>	timesignature file to be extended / verified\n"
-			" -o <fn>	save resulting timesignature / publications file in the specified file\n"
-			" -b <fn>	use specified publications file\n"
-			" -V <fn>	verify publications file signature verbosely against the specified OpenSSL-style truststore\n"
-			" -c <num>	Network transfer timeout.\n"
-			" -C <num>	Network connect timeout.\n"
+			" -d		Dump detailed information\n"
+			" -f <fn>	File to be signed / verified\n"
+			" -H <ALG>	Hash algorithm used to hash the file to be signed\n"
+			" -F <hash>	data hash to be signed / verified. hash Format: <ALG>:<hash in hex>\n"
+			" -i <fn>	Input signature token file to be extended / verified\n"
+			" -o <fn>	Output filename to store signature token or publications file\n"
+			" -b <fn>	use specified BBublications file\n"
+			" -V <fn>	use specified OpenSSL-style truststore file for publications file Verification\n"
+			" -W <dir>	use specified OpenSSL-style truststore directory for publications file WWerification\n"
+			" -c <num>	network transfer timeout, after successful Connect\n"
+			" -C <num>	network Connect timeout.\n"
 			" -h		Help (You are reading it now)\n"
 			"		- instead of filename is stdin/stdout stream\n",
 		test ? "test-" : "signing ",	
 		PACKAGE_VERSION, GT_VERSION >> 16, GT_VERSION & 0xff, argv0,
-		test ? " -a <num>	simulated extending request age in days (when no timesignature is specified), default 36\n" : ""
+		test ? " -a <num>	simulated extending request age in days (when no signature token is specified), default 36\n" : ""
 );
 	
 	fprintf(stderr, "\nDefault service access URL-s:\n"
@@ -326,38 +327,17 @@ void process_http_error(char **msg) {
 	}
 }
 
-  // callback for X509_STORE_CTX_set_verify_cb()
-int check_certificate(int ok, X509_STORE_CTX *context) {
-	char buf[256];
-	X509_NAME *subj = X509_get_subject_name(context->current_cert);
-	X509_NAME_oneline(subj, buf, sizeof(buf));
-	if (!ok)
-		fprintf(stderr, "Certificate not OK: %s, level=%d, err=%d (%s)\n", buf,
-				context->error_depth, context->error, X509_verify_cert_error_string(context->error));
-	else if (dump)
-		printf("Certificate OK: %s, level=%d, err=%d (%s)\n", buf,
-			   context->error_depth, context->error, X509_verify_cert_error_string(context->error));
-	
-	if (ok && context->error_depth == 0)
-		printf("Publications file signed by %s\n", buf);
-#ifdef MAGIC_EMAIL
-	if (context->error_depth == 0)
-		if (!strstr(buf, MAGIC_EMAIL)) {
-			fprintf(stderr, "Error, unknown signer DN. Publications file is signed by untrusted party.\n");
-			return 0;
-		}
-#endif
-	return ok;
-}
 
 
-int verify_publications_file_signing_cert(const GTPublicationsFile *pubfile) {
+int print_publications_file_signing_cert(const GTPublicationsFile *pubfile) {
 	int res = GT_UNKNOWN_ERROR;
 	unsigned char *certificate_der = NULL;
+	unsigned char *certificate_der_tmp;
 	size_t certificate_der_len;
-	X509 *x = NULL;
-	X509_STORE_CTX *store_ctx = NULL;
-	
+	X509 *certificate = NULL;
+	char buf[256];
+	X509_NAME *subj;
+
 	res = GTPublicationsFile_getSigningCert(pubfile, &certificate_der, &certificate_der_len);
 	if (res != GT_OK) {
 		fprintf(stderr, "GTPublicationsFile_getSigningCert() failed: %d (%s)\n",
@@ -366,40 +346,21 @@ int verify_publications_file_signing_cert(const GTPublicationsFile *pubfile) {
 			res = GT_BROKEN_PUB;
 		goto cleanup;
 	}
-	x = d2i_X509(NULL, (const unsigned char **) &certificate_der, certificate_der_len);
-	if (x == NULL) {
+	certificate_der_tmp = certificate_der;
+	certificate = d2i_X509(NULL, (const unsigned char **) &certificate_der_tmp, certificate_der_len);
+	if (certificate == NULL) {
 		ERR_print_errors_fp(stderr);
 		res = GT_BROKEN_PUB;
 		goto cleanup;
 	}
-	
-	store_ctx = X509_STORE_CTX_new();
-	if (store_ctx == NULL) {
-		ERR_print_errors_fp(stderr);
-		res = GT_OUT_OF_MEMORY;
-		goto cleanup;
-	}
+	subj = X509_get_subject_name(certificate);
+	X509_NAME_oneline(subj, buf, sizeof(buf));
+	printf("Publications file is signed by:\n%s\n", buf);
 
-	if (!X509_STORE_CTX_init(store_ctx, truststore, x, pubfile->signature->d.sign->cert)) {
-		ERR_print_errors_fp(stderr);
-		res = GT_OUT_OF_MEMORY;
-		goto cleanup;
-	}
-
-	X509_STORE_CTX_set_verify_cb(store_ctx, check_certificate);
-
-	X509_STORE_CTX_set_purpose(store_ctx, X509_PURPOSE_SMIME_SIGN);
-	
-	if (X509_verify_cert(store_ctx)) {
-		res = GT_OK;
-	} else {
-		ERR_print_errors_fp(stderr);
-		// fprintf(stderr, "Publications file signing certificate validation error\n");
-		res = GT_UNTRUSTED_PUB;
-	}
 cleanup:
-	X509_STORE_CTX_free(store_ctx);
-	X509_free(x);
+	GT_free(certificate_der);
+	if (certificate != NULL)
+		X509_free(certificate);
 	return res;
 }
 
@@ -481,7 +442,7 @@ int print_references(char* prefix, GTReferences *refs) {
 }
 
 int verify_publications(GTPublicationsFile *pubfile) {
-	int res = GT_UNKNOWN_ERROR;
+	int res2, res = GT_UNKNOWN_ERROR;
 	GTPublicationsFile_Cell *cell;
 	time_t tmp_time = 0;
 	struct tm pubtime_tm;
@@ -494,31 +455,31 @@ int verify_publications(GTPublicationsFile *pubfile) {
 		return GT_INVALID_CLI_ARGUMENT;
 	}
 	
-	if (truststore == NULL) {
-		res = GTPublicationsFile_verify(pubfile, &verification_info);
-		if (res != GT_OK) {
-			fprintf(stderr, "GTPublicationsFile_verify() failed: %d (%s)\n",
-					res, GT_getErrorString(res));
+	res = GTPublicationsFile_verify(pubfile, &verification_info);
+	if (res != GT_OK) {
+		fprintf(stderr, "GTPublicationsFile_verify() failed: %d (%s)\n",
+				res, GT_getErrorString(res));
+		if (res == GT_INVALID_FORMAT){
+			res = GT_BROKEN_PUB;
 			goto cleanup;
 		}
 	}
-	
-	// print latest publication time
+
+	// get latest publication time
 	cell = pubfile->publication_cells + pubfile->number_of_publications - 1;
 	tmp_time = cell->publication_identifier;
 	gmtime_r(&tmp_time, &pubtime_tm);
-	strftime(pubtime_buf, sizeof(pubtime_buf), "%Y-%m-%d %H:%M:%S", &pubtime_tm);
+	strftime(pubtime_buf, sizeof(pubtime_buf), "%Y-%m-%d %H:%M:%S", &pubtime_tm);	
+
+	if (res == GT_OK)
+		printf("Publications file content, signature and signing certificate are OK. Last pub: %s\n",
+				pubtime_buf);
+	if (dump)
+		print_publications_file_signing_cert(pubfile);
 	
-	if (truststore != NULL) {
-		res = verify_publications_file_signing_cert(pubfile);
-		if (res == GT_OK)
-			printf("Publications file content, signature and signing certificate are OK. Last pub: %s\n",
-				   pubtime_buf);
-	} else
-		printf("Publications file content and signature are OK. Last pub: %s\n", pubtime_buf);
-	
+
 	if (!dump && print_pubrefs)
-		res = print_references("\t", pubfile->pub_reference);
+		print_references("\t", pubfile->pub_reference);
 	
 
 	if (dump) {
@@ -546,11 +507,11 @@ int verify_publications(GTPublicationsFile *pubfile) {
 				
 				printf("  Identifier: %llu (%s UTC)\n", cell->publication_identifier, pubtime_buf);
 				
-				res = GTPublicationsFile_getBase32PublishedData(pubfile,
+				res2 = GTPublicationsFile_getBase32PublishedData(pubfile,
 																cell->publication_identifier, &base32_publication);
-				if (res != GT_OK) {
+				if (res2 != GT_OK) {
 					fprintf(stderr, "GTPublicationsFile_getBase32PublishedData() failed: %d (%s)\n",
-							res, GT_getErrorString(res));
+							res2, GT_getErrorString(res2));
 					goto cleanup;
 				}
 				printf("      Base32: %s\n", base32_publication);
@@ -571,10 +532,10 @@ int verify_publications(GTPublicationsFile *pubfile) {
 				gmtime_r(&kh_cell->key_publication_time, &pubtime_tm);
 				strftime(pubtime_buf, sizeof(pubtime_buf),
 						 "%Y-%m-%d %H:%M:%S", &pubtime_tm);
-				res = GTPublicationsFile_getKeyHashByIndex(pubfile, i, &key_hash);
-				if (res != GT_OK) {
+				res2 = GTPublicationsFile_getKeyHashByIndex(pubfile, i, &key_hash);
+				if (res2 != GT_OK) {
 					fprintf(stderr, "GTPublicationsFile_getBase32PublishedData() failed: %d (%s)\n",
-							res, GT_getErrorString(res));
+							res2, GT_getErrorString(res2));
 					goto cleanup;
 				}
 				
@@ -585,7 +546,7 @@ int verify_publications(GTPublicationsFile *pubfile) {
 			printf("\n");
 		}
 		
-		res = print_references("  ", pubfile->pub_reference);
+		print_references("  ", pubfile->pub_reference);
 
 		printf("\n");
 		
@@ -712,18 +673,10 @@ int cmonitor_verifyTimestampHash(const GTTimestamp *ts,
 		pub = pub_tmp;
 	}
 	if (pub != NULL) {
-		if (truststore != NULL) {
-			GTPublicationsFile_Cell *cell;
-			res = verify_publications_file_signing_cert(pub);
-			cell = pub->publication_cells + pub->number_of_publications - 1;
-			last_pub = cell->publication_identifier;
-		}
-		else {
-			GTPubFileVerificationInfo *pub_ver = NULL;
-			res = GTPublicationsFile_verify(pub, &pub_ver);
-			last_pub = pub_ver->last_publication_time;
-			GTPubFileVerificationInfo_free(pub_ver);
-		}
+		GTPubFileVerificationInfo *pub_ver = NULL;
+		res = GTPublicationsFile_verify(pub, &pub_ver);
+		last_pub = pub_ver->last_publication_time;
+		GTPubFileVerificationInfo_free(pub_ver);
 		if (res != GT_OK)
 			goto cleanup;
 	}
@@ -874,7 +827,7 @@ cleanup:
 
 // Verify timestamp and optionally print out dump.
 // datahash and pubfile may be NULL.
-int test_timestamp(const GTTimestamp* timestamp, const GTDataHash* data_hash, 
+int verify_timestamp(const GTTimestamp* timestamp, const GTDataHash* data_hash, 
 				   const char* ext_url, GTTimestamp **ext_ts, 
 				   const GTPublicationsFile *publications_file) {
 	int res = GT_UNKNOWN_ERROR;
@@ -903,15 +856,15 @@ int test_timestamp(const GTTimestamp* timestamp, const GTDataHash* data_hash,
 		res = GT_INVALID_FORMAT;
 	}
 	if( verification_info->verification_errors & GT_PUBLIC_KEY_SIGNATURE_FAILURE) {
-		fprintf(stderr, "GT_PUBLIC_KEY_SIGNATURE_FAILURE: The signed_data structure is incorrectly composed, i.e. wrong data is signed or the signature does not match with the public key in the timesignature.\n");
+		fprintf(stderr, "GT_PUBLIC_KEY_SIGNATURE_FAILURE: The signed_data structure is incorrectly composed, i.e. wrong data is signed or the signature does not match with the public key in the signature token.\n");
 		res = GT_INVALID_FORMAT;
 	}
 	if( verification_info->verification_errors & GT_NOT_VALID_PUBLIC_KEY_FAILURE ) {
-		fprintf(stderr, "GT_NOT_VALID_PUBLIC_KEY_FAILURE: Public key of the signed timesignature is not found among published ones.\n");
+		fprintf(stderr, "GT_NOT_VALID_PUBLIC_KEY_FAILURE: Public key of the signed signature token is not found among published ones.\n");
 		res = GT_KEY_NOT_PUBLISHED;
 	}
 	if( verification_info->verification_errors & GT_NOT_VALID_PUBLICATION ) {
-		fprintf(stderr, "GT_NOT_VALID_PUBLICATION: The publications file is inconsistent with the corresponding data in timesignature - publication identifiers do not match or published hash values do not match.\n");
+		fprintf(stderr, "GT_NOT_VALID_PUBLICATION: The publications file is inconsistent with the corresponding data in signature token - publication identifiers do not match or published hash values do not match.\n");
 		res = GT_TRUST_POINT_NOT_FOUND;
 	}
 	if( verification_info->verification_errors & GT_WRONG_DOCUMENT_FAILURE ) {
@@ -922,13 +875,13 @@ int test_timestamp(const GTTimestamp* timestamp, const GTDataHash* data_hash,
 	if (verify && res == GT_OK)  // start verification report with list of checks
 	{	
 		if( verification_info->verification_status & GT_PUBLIC_KEY_SIGNATURE_PRESENT )
-			printf("GT_PUBLIC_KEY_SIGNATURE_PRESENT: The PKI signature is present in the timesignature.\n");
+			printf("GT_PUBLIC_KEY_SIGNATURE_PRESENT: The PKI signature is present in the signature token.\n");
 		if( verification_info->verification_status & GT_PUBLICATION_REFERENCE_PRESENT )
-			printf("GT_PUBLICATION_REFERENCE_PRESENT: A publication reference was present in the timesignature.\n");
+			printf("GT_PUBLICATION_REFERENCE_PRESENT: A publication reference was present in the signature token.\n");
 		if( verification_info->verification_status & GT_DOCUMENT_HASH_CHECKED )
-			printf("GT_DOCUMENT_HASH_CHECKED: The timesignature was checked against the document hash.\n");
+			printf("GT_DOCUMENT_HASH_CHECKED: The signature token was checked against the document hash.\n");
 		if( verification_info->verification_status & GT_PUBLICATION_CHECKED )
-			printf("GT_PUBLICATION_CHECKED: The timesignature was checked against the publication data.\n");
+			printf("GT_PUBLICATION_CHECKED: The signature token was checked against the publication data.\n");
 	}
 
 
@@ -1019,40 +972,6 @@ cleanup:
 	return res;
 }
 
-int initialize_truststore(char *truststore_file) {
-	X509_LOOKUP *lookup = NULL;
-	int res = GT_UNKNOWN_ERROR;
-
-	truststore = X509_STORE_new();
-	if (truststore == NULL) {
-		res = GT_OUT_OF_MEMORY;
-		goto error;
-	}
-
-	lookup = X509_STORE_add_lookup(truststore, X509_LOOKUP_file());
-	if (lookup == NULL) {
-		res = GT_OUT_OF_MEMORY;
-		goto error;
-	}
-	// all roots, including intermediate, concatenated
-	if (!X509_LOOKUP_load_file(lookup, truststore_file, X509_FILETYPE_PEM)) {
-		res = GT_PKI_BAD_DATA_FORMAT;
-		fprintf(stderr, "Failed to load truststore '%s'.", truststore_file);
-		goto error;
-	}
-
-	res = GT_OK;
-	return res;
-
-error:
-	ERR_print_errors_fp(stderr);
-	if (truststore != NULL) {
-		X509_STORE_free(truststore);
-		truststore = NULL;		
-	}
-	return res;
-}
-
 void dump_extending_response(FILE *f, GTCertTokenResponse *resp) {
 	
 	char *tmp, tmp2[128];
@@ -1134,7 +1053,7 @@ int test_fake_extending(const char* tsa_url) {
 	int res = GT_UNKNOWN_ERROR;
 	GTCertTokenRequest* request;
 	unsigned char* request_data, * i2dp;
-	size_t request_len;
+	int request_len;
 	unsigned char *response = NULL;
 	size_t response_len;
 	time_t extt;
@@ -1526,6 +1445,7 @@ int main(int argc, char **argv)
 	char *digest_string = NULL;
 	int hashalg = GT_HASHALG_DEFAULT;
 	int curl_timeout;
+	bool truststore_cleared = false;
 	
 	const char* s_url = DEFAULT_S_URL;
 	const char* x_url = NULL;			// set if -x is present.
@@ -1563,8 +1483,8 @@ int main(int argc, char **argv)
 	
 	
 	for (;;) {
-		int c = test ? getopt(argc, argv, "sxpvtrdo:i:f:b:a:hc:C:V:S:X:P:F:lH:n") :
-						getopt(argc, argv, "sxpvtrdo:i:f:b:hc:C:V:S:X:P:F:lH:n");
+		int c = test ? getopt(argc, argv, "sxpvtrdo:i:f:b:a:hc:C:V:W:S:X:P:F:lH:n") :
+						getopt(argc, argv, "sxpvtrdo:i:f:b:hc:C:V:W:S:X:P:F:lH:n");
 		if (c == -1) {
 			break;
 		}
@@ -1675,12 +1595,53 @@ int main(int argc, char **argv)
 				p_url = optarg;
 				break;
 			case 'V':
-				res = initialize_truststore(optarg);
+			    if (! truststore_cleared) {
+			    	if (GT_truststore != NULL) {
+				    	res = GTTruststore_reset(0);
+						if (res != GT_OK ) {
+							fprintf(stderr, "Error clearing publications file verification truststore: %d (%s)\n",
+									res, GT_getErrorString(res));
+							goto e;
+						}
+					}
+					truststore_cleared = true;
+#ifdef __APPLE__
+					setenv("OPENSSL_X509_TEA_DISABLE", "1", 1);
+#endif
+				}
+			    res = GTTruststore_addLookupFile(optarg);
 				if (res != GT_OK ) {
-					// initialize_truststore() yells enough on errors
+					fprintf(stderr, "Cannot use '%s' as publications file verification truststore: %d (%s)\n",
+							optarg, res, GT_getErrorString(res));
+					if (dump)
+						ERR_print_errors_fp(stderr);
 					goto e;
 				}
 				break;
+			case 'W':
+			    if (! truststore_cleared) {
+			    	if (GT_truststore != NULL) {
+			    	res = GTTruststore_reset(0);
+						if (res != GT_OK ) {
+							fprintf(stderr, "Error clearing publications file verification truststore: %d (%s)\n",
+									res, GT_getErrorString(res));
+							goto e;
+						}
+					}
+					truststore_cleared = true;
+#ifdef __APPLE__
+					setenv("OPENSSL_X509_TEA_DISABLE", "1", 1);
+#endif
+				}
+			    res = GTTruststore_addLookupDir(optarg);
+				if (res != GT_OK ) {
+					fprintf(stderr, "Cannot use directory '%s' as publications file verification truststore: %d (%s)\n",
+							optarg, res, GT_getErrorString(res));
+					if (dump)
+						ERR_print_errors_fp(stderr);
+					goto e;
+				}
+				break;				
 			case 'F':
 				// depends on hashalg, parsed later.
 				digest_string = optarg;
@@ -1741,7 +1702,7 @@ int main(int argc, char **argv)
 					goto e;
 				}
 				if ((hashalg != GT_HASHALG_DEFAULT) && (hashalg != alg))
-					fprintf(stderr, "Warning, ignoring -H <alg> because original timesignature does use different hash algorithm\n");
+					fprintf(stderr, "Warning, ignoring -H <alg> because original signature token does use different hash algorithm\n");
 				hashalg = alg;
 			}
 			res = hash_file(filename, hashalg, &data_hash);
@@ -1790,7 +1751,7 @@ int main(int argc, char **argv)
 				goto e;
 			}
 			if (dump || verify || print_id || print_name || print_pubrefs) {
-				TIMING(res = test_timestamp(timestamp, data_hash, x_url, NULL, publications),
+				TIMING(res = verify_timestamp(timestamp, data_hash, x_url, NULL, publications),
 					   "Verification call");
 			}
 			
@@ -1806,7 +1767,7 @@ int main(int argc, char **argv)
 				/* Save DER-encoded timestamp to file. */
 				res = save_file(outfile, der, der_len);
 				if (res != GT_OK) {
-					fprintf(stderr, "Cannot save timesignature to file %s: %d (%s)\n",
+					fprintf(stderr, "Cannot save signature token to file %s: %d (%s)\n",
 							outfile, res, GT_getErrorString(res));
 					if (res == GT_IO_ERROR) {
 						fprintf(stderr, "\t%d (%s)\n", errno, strerror(errno));
@@ -1815,7 +1776,7 @@ int main(int argc, char **argv)
 				}
 			} else {
 				if (!test) {
-					fprintf(stdout, "Warning: timesignature token is not saved. use -o <fn> option.\n");
+					fprintf(stdout, "Warning: signature token is not saved. use -o <fn> option.\n");
 				}	
 			}
 			break;
@@ -1823,7 +1784,7 @@ int main(int argc, char **argv)
 			if (timestamp != NULL) {
 				GTTimestamp *outts = NULL;
 				if(dump || verify || print_id || print_name || print_pubrefs) {
-					TIMING(res = test_timestamp(timestamp, data_hash, x_url, &outts, publications),
+					TIMING(res = verify_timestamp(timestamp, data_hash, x_url, &outts, publications),
 						"Verification call");
 					if (res != GT_OK) {
 						goto e;
@@ -1850,7 +1811,7 @@ int main(int argc, char **argv)
 					/* Save DER-encoded timestamp to file. */
 					res = save_file(outfile, der, der_len);
 					if (res != GT_OK) {
-						fprintf(stderr, "Cannot save extended timesignature to file %s: %d (%s)\n",
+						fprintf(stderr, "Cannot save extended signature token to file %s: %d (%s)\n",
 							outfile, res, GT_getErrorString(res));
 						if (res == GT_IO_ERROR) {
 							fprintf(stderr, "\t%d (%s)\n", errno, strerror(errno));
@@ -1863,7 +1824,7 @@ int main(int argc, char **argv)
 				} else {
 					if (!test) { 
 						if (GTTimestamp_isExtended(timestamp) == GT_EXTENDED)
-							fprintf(stdout, "Warning: extended timesignature token is not saved. Use -o <fn> option.\n");
+							fprintf(stdout, "Warning: extended signature token is not saved. Use -o <fn> option.\n");
 					}
 				}
 				GTTimestamp_free(outts);
@@ -1871,7 +1832,7 @@ int main(int argc, char **argv)
 				if (test) {
 					res = test_fake_extending(x_url);
 				} else {
-					fprintf(stderr, "No timesignature specified for -x\n");
+					fprintf(stderr, "No signature token specified for -x\n");
 					res = GT_INVALID_CLI_ARGUMENT;
 					goto e;
 				}
@@ -1886,22 +1847,19 @@ int main(int argc, char **argv)
 		case 'v':
 			if (timestamp == NULL) {
 				if (publications == NULL) {
-					fprintf(stderr, "-v requires timesignature or publications file to verify, specify with -i or -b\n");
+					fprintf(stderr, "-v requires signature token or publications file to verify, specify with -i or -b\n");
 					res = GT_INVALID_CLI_ARGUMENT;
 				} else {
 					res = verify_publications(publications);
 				}
 			}
 			else
-				TIMING(res = test_timestamp(timestamp, data_hash, x_url, NULL, publications),
+				TIMING(res = verify_timestamp(timestamp, data_hash, x_url, NULL, publications),
 						"Verification call");
 			break;
 	}
 
 e:
-	if (truststore != NULL)
-		X509_STORE_free(truststore);
-
 	GTDataHash_free(data_hash);
 	GTTimestamp_free(timestamp);
 	GTPublicationsFile_free(publications);

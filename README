@@ -18,7 +18,7 @@ Dependencies
 ============
  * OpenSSL (0.9.8 and up) development libraries
  * libcurl
- * libgt (Guardtime C SDK), available from http://download.guardtime.com/libgt-0.3.11-src.tgz
+ * libgt (Guardtime C SDK), available from http://download.guardtime.com/libgt-0.3.12.tar.gz
 
 
 Works on
@@ -29,7 +29,7 @@ Works on
  * Mac OS X
  * Windows - see below
 
-Packaging scripts will come later.
+Packaging scripts are in subdirectory 'packaging'.
 
 
 Compiling
@@ -44,8 +44,8 @@ autoreconf -vi
 Windows
 =======
 Precompiled dependencies:
- - http://download.guardtime.com/libeay-0.9.8g-bin-win32.zip
- - http://download.guardtime.com/libgt-0.3.11-bin-win32.zip
+ - http://download.guardtime.com/openssl-0.9.8g-bin-win32.zip / http://download.guardtime.com/openssl-0.9.8g-bin-win64.zip
+ - http://download.guardtime.com/libgt-0.3.12-bin-win32.zip / http://download.guardtime.com/libgt-0.3.12-bin-win64.zip
 No need for libcurl.
 
 winmake.bat compiles the tool. In order to create helpfile in PDF format run
@@ -56,4 +56,4 @@ License
 =======
 Apache 2.0
 
-Copyright Guardtime AS 2013
+Copyright Guardtime AS 2014

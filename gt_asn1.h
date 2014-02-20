@@ -1,5 +1,5 @@
 /*
- * $Id: gt_asn1.h 74 2010-02-22 11:42:26Z ahto.truu $
+ * $Id: gt_asn1.h 177 2014-01-16 22:18:43Z ahto.truu $
  *
  * Copyright 2008-2010 GuardTime AS
  *
@@ -29,6 +29,11 @@
 #ifdef __cplusplus
 extern"C" {
 #endif
+
+#define sk_ASN1_OCTET_STRING_num(st) SKM_sk_num(ASN1_OCTET_STRING, (st))
+#define sk_ASN1_OCTET_STRING_value(st, i) SKM_sk_value(ASN1_OCTET_STRING, (st), (i))
+#define sk_ASN1_OCTET_STRING_push(st, val) SKM_sk_push(ASN1_OCTET_STRING, (st), (val))
+#define sk_ASN1_OCTET_STRING_new_null() SKM_sk_new_null(ASN1_OCTET_STRING)
 
 /*
  * id-gt-TimeSignatureAlg OBJECT IDENTIFIER ::= {
@@ -230,8 +235,8 @@ int GTPublishedData_cmp(const GTPublishedData *a1, const GTPublishedData *a2);
  */
 typedef STACK_OF(ASN1_OCTET_STRING) GTReferences;
 
-DECLARE_ASN1_ITEM(GTReferences);
-DECLARE_ASN1_FUNCTIONS(GTReferences);
+DECLARE_ASN1_ITEM(GTReferences)
+DECLARE_ASN1_FUNCTIONS(GTReferences)
 GTReferences* GTReferences_dup(GTReferences *src);
 
 /*

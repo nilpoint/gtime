@@ -1,5 +1,5 @@
 /*
- * $Id: gt_http.h 99 2010-12-01 13:30:21Z ahto.truu $
+ * $Id: gt_http.h 167 2014-01-15 15:27:52Z ahto.truu $
  *
  * Copyright 2008-2010 GuardTime AS
  *
@@ -19,16 +19,16 @@
 /**
  * \file gt_http.h
  *
- * \brief GuardTime client SDK, public header file for HTTP transport module.
+ * \brief Guardtime client SDK, public header file for HTTP transport module.
  *
- * This module offers the functions to communicate with the GuardTime
+ * This module offers the functions to communicate with the Guardtime
  * network over the HTTP protocol.
  *
  * The three main functions are:
  * - creating a timestamp (the resulting PKI-signed timestamp
- * can be verified using the GuardTime public key certificate);
+ * can be verified using the Guardtime public key certificate);
  * - extending a timestamp (the resulting hash-linked timestamp
- * can be verified independently from GuardTime for unlimited time);
+ * can be verified independently from Guardtime for unlimited time);
  * - verifying a timestamp; the following diagram illustrates the
  * decision process:
  * \image html ApiVerifyTimestamp.png
@@ -45,7 +45,7 @@
  *
  * Multi-platform source code for cURL can be dowloaded from
  * <a href="http://curl.haxx.se/">curl.haxx.se</a>.
- * This version of the GuardTime SDK has been tested with cURL 7.18.1.
+ * This version of the Guardtime SDK has been tested with cURL 7.18.1.
  *
  * Although it's not difficult to compile cURL on Linux, most distributions
  * also provide prebuilt binaries through their normal package management
@@ -53,7 +53,7 @@
  * "developer" version, otherwise you may only get the tools and utilities,
  * but no libraries or headers.
  *
- * To compile a program that uses both the HTTP module and GuardTime base
+ * To compile a program that uses both the HTTP module and Guardtime base
  * API, use a command along the lines of
  * \code
  *    gcc example.c -o example -I/usr/local/gt/include \
@@ -62,28 +62,28 @@
  * \endcode
  * (either with the backslashes or all on a single line) replacing
  * \c /usr/local/gt, \c /usr/local/curl and \c /usr/local/ssl with
- * the directories where you unpacked the GuardTime, cURL and OpenSSL libraries.
+ * the directories where you unpacked the Guardtime, cURL and OpenSSL libraries.
  *
  * <b>Windows</b>
  *
  * The networking functions in this module rely on WinINet, which comes
  * standard on all supported versions of Windows.
  *
- * To compile a program that uses both the HTTP module and GuardTime base
+ * To compile a program that uses both the HTTP module and Guardtime base
  * API, use a command along the lines of
  * \code
  *    cl.exe /MT example.c /I C:\gt\include
  *    /link /libpath:C:\gt\lib /libpath:C:\openssl\lib
- *    libgthttpMT.lib libgtbaseMT.lib libeay32MT.lib wininet.lib
- *    wsock32.lib wldap32.lib winmm.lib user32.lib gdi32.lib advapi32.lib
+ *    libgthttpMT.lib libgtbaseMT.lib libeay32MT.lib
+ *    wininet.lib user32.lib gdi32.lib advapi32.lib crypt32.lib
  * \endcode
  * (all on a single line) replacing
  * \c C:\\gt and \c C:\\openssl with
- * the directories where you unpacked the GuardTime and OpenSSL libraries.
+ * the directories where you unpacked the Guardtime and OpenSSL libraries.
  *
  * When compiling, keep in mind that mixing code compiled with different
  * \c /Mxx settings is dangerous. It's best to always use the
- * GuardTime and OpenSSL libraries that match the \c /Mxx
+ * Guardtime and OpenSSL libraries that match the \c /Mxx
  * setting you specified for compiling your own source code.
  */
 
@@ -104,7 +104,7 @@
  *
  * \see GTHTTP_getVersion, GT_VERSION
  */
-#define GTHTTP_VERSION (0 << 24 | 3 << 16 | 8)
+#define GTHTTP_VERSION (0 << 24 | 3 << 16 | 12)
 
 #ifdef __cplusplus
 extern "C" {
@@ -113,13 +113,13 @@ extern "C" {
 /**
  * \ingroup http
  *
- * GuardTime status codes specific for the HTTP transport module.
+ * Guardtime status codes specific for the HTTP transport module.
  *
  * \see #GTStatusCode.
  */
 enum GTHTTPStatusCode {
 	/**
-	 * This is the limit on distinct HTTP response codes the GuardTime
+	 * This is the limit on distinct HTTP response codes the Guardtime
 	 * HTTP module can handle. Since it's a fair bit above the highest
 	 * value defined by the W3C, we should be safe for quite some time.
 	 */
@@ -134,8 +134,8 @@ enum GTHTTPStatusCode {
 	/**
 	 * This is the base value for error codes from the underlying transport
 	 * library (cURL on Linux, WinINet on Windows) used to disambiguate them
-	 * from the GuardTime error codes: the library error \c err is returned
-	 * as \c (GTHTTP_IMPL_BASE + err) from the GuardTime functions. Make sure
+	 * from the Guardtime error codes: the library error \c err is returned
+	 * as \c (GTHTTP_IMPL_BASE + err) from the Guardtime functions. Make sure
 	 * nobody else uses the values in the range from \c GTHTTP_IMPL_BASE to
 	 * \c GTHTTP_HIGHEST or else the error codes can't be resolved to error
 	 * messages correctly.
@@ -181,7 +181,7 @@ void GTHTTP_finalize(void);
  *
  * Gets human readable error string in English.
  *
- * \param error \c (in) - Status code from a GuardTime HTTP function.
+ * \param error \c (in) - Status code from a Guardtime HTTP function.
  * \return the error string (it is static, don't try to free it).
  *
  * \note The functions in the HTTP module may relay status codes from

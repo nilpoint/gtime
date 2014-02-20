@@ -1,5 +1,5 @@
 /*
- * $Id: gt_http.c 103 2010-01-10 19:46:34Z ahto.truu $
+ * $Id: gt_http.c 177 2014-01-16 22:18:43Z ahto.truu $
  *
  * Copyright 2008-2010 GuardTime AS
  *
@@ -112,6 +112,7 @@ int GTHTTP_init(const char *user_agent, int init_winsock)
 {
 	int res = GT_UNKNOWN_ERROR;
 	char agent[120];
+	ULONG buf;
 
 	if (init_count++ > 0) {
 		/* Nothing to do: already initialized. */
@@ -127,6 +128,19 @@ int GTHTTP_init(const char *user_agent, int init_winsock)
 
 	session_handle = InternetOpenA(agent, INTERNET_OPEN_TYPE_PRECONFIG, NULL, NULL, 0);
 	if (session_handle == NULL) {
+		res = map_impl(GetLastError());
+		goto cleanup;
+	}
+
+	/* By default WinINet allows just two simultaneous connections to one server. */
+	buf = 1024;
+	res = InternetSetOption(NULL, INTERNET_OPTION_MAX_CONNS_PER_SERVER, &buf, sizeof(buf));
+	if (res != TRUE) {
+		res = map_impl(GetLastError());
+		goto cleanup;
+	}
+	res = InternetSetOption(NULL, INTERNET_OPTION_MAX_CONNS_PER_1_0_SERVER, &buf, sizeof(buf));
+	if (res != TRUE) {
 		res = map_impl(GetLastError());
 		goto cleanup;
 	}
@@ -261,10 +275,10 @@ const char *GTHTTP_getErrorString(int error)
 	}
 
 	if (error >= GTHTTP_HTTP_BASE && error < GTHTTP_IMPL_BASE) {
-		// according to cURL documentation, only 4xx and 5xx are returned
-		// as HTTP errors; we do the same in WinINet based implementation;
-		// and the below list exhausts all 4xx and 5xx results defined by
-		// the W3C specification
+		/* According to cURL documentation, only 4xx and 5xx are returned
+		 * as HTTP errors; we do the same in WinINet based implementation;
+		 * and the below list exhausts all 4xx and 5xx results defined by
+		 * the W3C specification. */
 		switch (error) {
 			case GTHTTP_HTTP_BASE + 400:
 				return "Server returned HTTP status 400: Bad Request";
@@ -374,7 +388,7 @@ int GTHTTP_sendRequest(const char *url,
 		goto cleanup;
 	}
 
-	// extract host, port, and query from the URL
+	/* Extract host, port, and query from the URL. */
 	uc.dwHostNameLength = 1;
 	uc.dwUrlPathLength = 1;
 	uc.dwExtraInfoLength = 1;
@@ -406,7 +420,7 @@ int GTHTTP_sendRequest(const char *url,
 		strncpy_s(query + uc.dwUrlPathLength, uc.dwExtraInfoLength + 1, uc.lpszExtraInfo, uc.dwExtraInfoLength);
 	}
 
-	// open the connection and send the request
+	/* Open the connection and send the request. */
 	cnx = InternetConnectA(session_handle, host, uc.nPort, NULL, NULL, uc.nScheme, 0, 0);
 	if (cnx == NULL) {
 		res = map_impl(GetLastError());
@@ -430,36 +444,62 @@ int GTHTTP_sendRequest(const char *url,
 		InternetSetOption(req, INTERNET_OPTION_SEND_TIMEOUT, &dw, sizeof(dw));
 		InternetSetOption(req, INTERNET_OPTION_RECEIVE_TIMEOUT, &dw, sizeof(dw));
 	}
+again:
 	if (!HttpSendRequestA(req, NULL, 0, (LPVOID) request, request_length)) {
 		res = map_impl(GetLastError());
 		goto cleanup;
 	}
 
-	// receive the response
+	/* Receive the response. */
 	if (!HttpQueryInfo(req, HTTP_QUERY_STATUS_CODE | HTTP_QUERY_FLAG_NUMBER,
 			&http_res, &http_res_len, 0)) {
 		res = map_impl(GetLastError());
 		goto cleanup;
 	}
-	if (http_res >= 400) {
+
+	/* Proxy server requires authentication, prompt user. */
+	if (http_res == HTTP_STATUS_PROXY_AUTH_REQ) {
+		if (InternetErrorDlg(GetDesktopWindow(), req,
+				ERROR_INTERNET_INCORRECT_PASSWORD,
+				FLAGS_ERROR_UI_FILTER_FOR_ERRORS |
+				FLAGS_ERROR_UI_FLAGS_GENERATE_DATA |
+				FLAGS_ERROR_UI_FLAGS_CHANGE_OPTIONS,
+				NULL) == ERROR_INTERNET_FORCE_RETRY) {
+			goto again;
+		}
+	}
+
+	/* Web server requires authentication, prompt user. */
+	if (http_res == HTTP_STATUS_DENIED) {
+		if (InternetErrorDlg(GetDesktopWindow(), req,
+				ERROR_INTERNET_INCORRECT_PASSWORD,
+				FLAGS_ERROR_UI_FILTER_FOR_ERRORS |
+				FLAGS_ERROR_UI_FLAGS_GENERATE_DATA |
+				FLAGS_ERROR_UI_FLAGS_CHANGE_OPTIONS,
+				NULL) == ERROR_INTERNET_FORCE_RETRY) {
+			goto again;
+		}
+	}
+
+	if (http_res >= 300) {
 		res = map_http(http_res);
 		if (error != NULL) {
-			// we had some error and client code wanted the message
+			/* We had some error and client code wanted the message. */
 			if (HttpQueryInfoA(req, HTTP_QUERY_STATUS_TEXT, http_msg, &http_msg_len, 0) ||
 					GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
-				// unexpected results retrieving the HTTP error message
-				// just report the HTTP error code
+				/* Unexpected results retrieving the HTTP error message:
+				 * just report the HTTP error code. */
 				goto cleanup;
 			}
 			http_msg = GT_malloc(http_msg_len);
 			if (http_msg == NULL) {
-				// no memory for the HTTP error message
-				// just report the HTTP error code
+				/* No memory for the HTTP error message:
+				 * just report the HTTP error code. */
 				goto cleanup;
 			}
 			if (!HttpQueryInfoA(req, HTTP_QUERY_STATUS_TEXT, http_msg, &http_msg_len, 0)) {
-				// unexpected results retrieving the HTTP error message
-				// just report the HTTP error code
+				/* Unexpected results retrieving the HTTP error message:
+				 * just report the HTTP error code. */
 				goto cleanup;
 			}
 			*error = http_msg;
@@ -467,8 +507,9 @@ int GTHTTP_sendRequest(const char *url,
 		}
 		goto cleanup;
 	}
+
 	while (1) {
-		DWORD add_len = 0x2000; // download in 8K increments
+		DWORD add_len = 0x2000; /* Download in 8K increments. */
 		resp = GT_realloc(resp, resp_len + add_len);
 		if (resp == NULL) {
 			res = GT_OUT_OF_MEMORY;
@@ -579,29 +620,48 @@ int GTHTTP_sendRequest(const char *url,
 	if (response_timeout >= 0) {
 		curl_easy_setopt(curl, CURLOPT_TIMEOUT, response_timeout);
 	}
-	curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1);
 	if (err != NULL) {
 		curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, err);
 	}
 
+	// enable for dumping http headers
+	//curl_easy_setopt(curl, CURLOPT_VERBOSE, 1);
+
+	curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1);
+
 	res = curl_easy_perform(curl);
 
 	if (res != CURLE_OK && error != NULL) {
-		// we had some error and client code wanted the message
+		/* We had some error and client code wanted the message. */
 		*error = err;
 		err = NULL;
 	}
 
-	if (res == CURLE_HTTP_RETURNED_ERROR) {
-		if (curl_easy_getinfo(curl, CURLINFO_HTTP_CODE, &http_res) == CURLE_OK) {
-			// now we have the actual HTTP response code, so we replace
-			// the generic 'HTTP error' with the more accurate one
+	if (curl_easy_getinfo(curl, CURLINFO_HTTP_CODE, &http_res) == CURLE_OK) {
+		if (http_res >= 300) {    // not using CURLOPT_FAILONERROR because it fails only on >= 400
+			const char *msg;
+			int i;
 			res = map_http(http_res);
+			// get better error message from web page: <title>....<
+			msg = strcasestr((const char *) receive_buffer.buffer, "<title>");
+			msg += strlen("<title>");
+			if (err != NULL && msg != NULL)
+				for (i = 0; (unsigned char *) msg - receive_buffer.buffer + i < receive_buffer.buf_sz; i++) {
+					if (msg[i] == '<' || msg[i] == '\n' || msg[i] == '\r' || msg[i] == '\0')
+						if (i <= CURL_ERROR_SIZE) {
+							*error = strncpy(err, msg, i);
+							err[i] = '\0';
+							err = NULL;
+							goto cleanup;
+						}
+
+			}
 			goto cleanup;
 		}
 	}
 
 	res = map_impl(res);
+
 	if (res != GT_OK) {
 		goto cleanup;
 	}
@@ -731,6 +791,7 @@ int GTHTTP_extendTimestamp(const GTTimestamp *ts_in,
 	ts_tmp = NULL;
 
 cleanup:
+
 	GTTimestamp_free(ts_tmp);
 	GT_free(response);
 	GT_free(request);
