@@ -1498,7 +1498,8 @@ int main(int argc, char **argv)
 				break;
 			case 'x':
 				mode = 'x';
-				x_url = DEFAULT_X_URL;
+				if (x_url == NULL)
+					x_url = DEFAULT_X_URL;
 				break;
 			case 'p':
 				download_pubfile = true;
